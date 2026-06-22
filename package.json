@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-emoji-toolbar",
+  "name": "tutu-emoji-toolbar",
   "version": "1.0.0",
-  "description": "Quickly search for an insert emojis into your editor.",
+  "description": "全局 Emoji 插入工具，支持标题、文件重命名、右键菜单、移动端等场景",
   "repository": {
     "type": "git",
     "url": "https://github.com/oliveryh/obsidian-emoji-toolbar"
@@ -10,9 +10,10 @@
   "keywords": [
     "obsidian",
     "obsidian-md",
-    "obsidian-md-plugin"
+    "obsidian-md-plugin",
+    "emoji"
   ],
-  "author": "oliveryh",
+  "author": "Tutu",
   "license": "BSD-3-Clause",
   "scripts": {
     "lint": "biome lint ./src",

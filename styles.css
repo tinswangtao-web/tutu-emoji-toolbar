@@ -21,11 +21,42 @@ img.emoji {
 
   .button {
     background-color: unset;
-    border: 0px !important;
-    box-shadow: 0px !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
   .modal-close-button {
     visibility: hidden;
+  }
+}
+
+/* 移动端浮动按钮 */
+.emoji-toolbar-mobile-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  z-index: var(--layer-notice, 100);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background-color: var(--interactive-accent, #7c3aed);
+  color: white;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+
+  &:active {
+    transform: scale(0.92);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  body.is-mobile.theme-dark & {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   }
 }

@@ -2,7 +2,7 @@
 
 This plugin for [Obsidian](https://obsidian.md/) allows you to quickly search for and add emojis to your editor.
 
-![Emoji Toolbar Plugin](https://raw.githubusercontent.com/oliveryh/obsidian-emoji-toolbar/main/demo/demo.gif)
+![Emoji Toolbar Plugin](https://raw.githubusercontent.com/tinswangtao-web/tutu-emoji-toolbar/main/demo/demo.gif)
 
 ## Usage
 

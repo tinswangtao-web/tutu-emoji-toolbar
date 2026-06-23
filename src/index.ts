@@ -565,7 +565,7 @@ class SettingsTab extends PluginSettingTab {
     containerEl.empty()
 
     containerEl.createEl('h1', { text: 'Tutu Emoji Toolbar' })
-    containerEl.createEl('a', { text: 'Forked from oliveryh', href: 'https://github.com/oliveryh/obsidian-emoji-toolbar' })
+    containerEl.createEl('a', { text: 'Forked from oliveryh', href: 'https://github.com/tinswangtao-web/tutu-emoji-toolbar' })
 
     containerEl.createEl('h2', { text: '设置' })
 

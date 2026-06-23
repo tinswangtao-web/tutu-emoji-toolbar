@@ -4,7 +4,7 @@
   "description": "全局 Emoji 插入工具，支持标题、文件重命名、右键菜单、移动端等场景",
   "repository": {
     "type": "git",
-    "url": "https://github.com/oliveryh/obsidian-emoji-toolbar"
+    "url": "https://github.com/tinswangtao-web/tutu-emoji-toolbar"
   },
   "main": "main.js",
   "keywords": [

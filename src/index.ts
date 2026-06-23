@@ -24,7 +24,7 @@ import EmojiToolbar from './ui/EmojiToolbar'
 
 // emoji-mart 中文国际化（基于 @emoji-mart/data/i18n/zh.json）
 import zhI18n from '@emoji-mart/data/i18n/zh.json'
-const EMOJI_I18N = zhI18n
+const EMOJI_I18N: unknown = zhI18n
 
 interface EmojiSelection {
   native: string
@@ -74,6 +74,14 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+interface ObsidianPluginRegistry {
+  plugins: Record<string, unknown>
+}
+
+function getPluginRegistry(app: App): ObsidianPluginRegistry | undefined {
+  return (app as App & { plugins?: ObsidianPluginRegistry }).plugins
+}
+
 function getRangeOffsetWithinElement(contentEl: HTMLElement, range?: Range): number | undefined {
   if (!range) return undefined
 
@@ -89,7 +97,7 @@ function getRangeOffsetWithinElement(contentEl: HTMLElement, range?: Range): num
 
 function getElementFromNode(node: Node | null): HTMLElement | null {
   if (!node) return null
-  return node instanceof HTMLElement ? node : node.parentElement
+  return node.instanceOf(HTMLElement) ? node : node.parentElement
 }
 
 function getInlineTitleSelection(): { titleEl: HTMLElement; range: Range } | null {
@@ -212,7 +220,9 @@ function renameFileBasename(
 }
 
 function detectInsertTarget(app: App, trackedInput: TrackedInput | null): SavedSelection {
-  const activeEl = document.activeElement as HTMLElement
+  const activeEl = activeDocument.activeElement?.instanceOf(HTMLElement)
+    ? activeDocument.activeElement
+    : null
   const inlineTitleSelection = getInlineTitleSelection()
 
   if (inlineTitleSelection) {
@@ -245,7 +255,7 @@ function detectInsertTarget(app: App, trackedInput: TrackedInput | null): SavedS
     }
 
     // 文件重命名输入框
-    if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+    if (activeEl.instanceOf(HTMLInputElement) || activeEl.instanceOf(HTMLTextAreaElement)) {
       if (!activeEl.closest('#emoji-modal')) {
         const fileEl = activeEl.closest('[data-path]')
         let titleFile = getActiveFileForTitleText(app, activeEl.value)
@@ -411,7 +421,7 @@ function insertFromSaved(app: App, saved: SavedSelection, text: string) {
           saved.contentEl.focus()
           const range = saved.range
           range.deleteContents()
-          const textNode = document.createTextNode(text)
+          const textNode = activeDocument.createTextNode(text)
           range.insertNode(textNode)
           range.setStartAfter(textNode)
           range.collapse(true)
@@ -428,12 +438,7 @@ function insertFromSaved(app: App, saved: SavedSelection, text: string) {
             }),
           )
         } catch {
-          try {
-            saved.contentEl.focus()
-            document.execCommand('insertText', false, text)
-          } catch {
-            copyToClipboard(text)
-          }
+          copyToClipboard(text)
         }
       }
       break
@@ -447,7 +452,7 @@ function insertFromSaved(app: App, saved: SavedSelection, text: string) {
 
 function copyToClipboard(text: string) {
   try {
-    navigator.clipboard.writeText(text)
+    void navigator.clipboard.writeText(text)
     new Notice('Emoji 已复制到剪贴板')
   } catch {
     new Notice('无法复制到剪贴板')
@@ -497,12 +502,12 @@ class EmojiModal extends Modal {
 
 // ---- 设置 ----
 
-interface MyPluginSettings {
+interface EmojiToolbarSettings {
   twitterEmojiActive: boolean
   hotkey: string
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
+const DEFAULT_SETTINGS: EmojiToolbarSettings = {
   twitterEmojiActive: false,
   hotkey: '',
 }
@@ -510,7 +515,7 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 // ---- 插件主类 ----
 
 export default class EmojiPickerPlugin extends Plugin {
-  settings: MyPluginSettings = Object.assign({}, DEFAULT_SETTINGS)
+  settings: EmojiToolbarSettings = Object.assign({}, DEFAULT_SETTINGS)
   private mobileButton: HTMLElement | null = null
   private hotkeyHandler: ((evt: KeyboardEvent) => void) | null = null
   private trackedInput: TrackedInput | null = null
@@ -524,7 +529,7 @@ export default class EmojiPickerPlugin extends Plugin {
     await this.loadSettings()
 
     // 检测与原版插件的冲突
-    if (this.app.plugins.plugins['obsidian-emoji-toolbar']) {
+    if (getPluginRegistry(this.app)?.plugins['obsidian-emoji-toolbar']) {
       new Notice('检测到原版 Emoji Toolbar 插件已启用，请先禁用原版插件以避免冲突。', 8000)
     }
 
@@ -555,7 +560,7 @@ export default class EmojiPickerPlugin extends Plugin {
       }
 
       // 文件重命名输入框
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      if (target.instanceOf(HTMLInputElement) || target.instanceOf(HTMLTextAreaElement)) {
         if (!target.closest('#emoji-modal') && !target.closest('.modal-setting-backdrop')) {
           const fileEl = target.closest('[data-path]')
           let file = getActiveFileForTitleText(this.app, target.value)
@@ -596,7 +601,7 @@ export default class EmojiPickerPlugin extends Plugin {
         }
       }
     }
-    document.addEventListener('focusin', this.focusinHandler)
+    activeDocument.addEventListener('focusin', this.focusinHandler)
 
     // Ribbon 图标
     this.addRibbonIcon('smile', '插入 Emoji', () => {
@@ -607,7 +612,6 @@ export default class EmojiPickerPlugin extends Plugin {
     this.addCommand({
       id: 'emoji-picker:open-picker',
       name: '打开 Emoji 选择器',
-      hotkeys: [],
       callback: () => {
         this.openEmojiPicker()
       },
@@ -638,11 +642,11 @@ export default class EmojiPickerPlugin extends Plugin {
 
   onunload() {
     if (this.focusinHandler) {
-      document.removeEventListener('focusin', this.focusinHandler)
+      activeDocument.removeEventListener('focusin', this.focusinHandler)
       this.focusinHandler = null
     }
     if (this.hotkeyHandler) {
-      document.removeEventListener('keydown', this.hotkeyHandler)
+      activeDocument.removeEventListener('keydown', this.hotkeyHandler)
       this.hotkeyHandler = null
     }
     if (this.mobileButton) {
@@ -676,7 +680,7 @@ export default class EmojiPickerPlugin extends Plugin {
   }
 
   createMobileButton() {
-    this.mobileButton = document.body.createEl('button', {
+    this.mobileButton = activeDocument.body.createEl('button', {
       cls: 'emoji-toolbar-mobile-btn',
     })
     this.mobileButton.setText('\u{1F60A}')
@@ -687,7 +691,7 @@ export default class EmojiPickerPlugin extends Plugin {
 
   registerCustomHotkey() {
     if (this.hotkeyHandler) {
-      document.removeEventListener('keydown', this.hotkeyHandler)
+      activeDocument.removeEventListener('keydown', this.hotkeyHandler)
       this.hotkeyHandler = null
     }
 
@@ -706,8 +710,8 @@ export default class EmojiPickerPlugin extends Plugin {
     this.hotkeyHandler = (evt: KeyboardEvent) => {
       const target = evt.target as HTMLElement
       const isInInputField =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
+        target.instanceOf(HTMLInputElement) ||
+        target.instanceOf(HTMLTextAreaElement) ||
         target.isContentEditable
       if (isInInputField && !hasCtrl && !hasAlt && !hasMeta) return
 
@@ -724,11 +728,12 @@ export default class EmojiPickerPlugin extends Plugin {
       }
     }
 
-    document.addEventListener('keydown', this.hotkeyHandler)
+    activeDocument.addEventListener('keydown', this.hotkeyHandler)
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+    const savedData = (await this.loadData()) as Partial<EmojiToolbarSettings> | null
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, savedData)
   }
 
   async saveSettings() {
@@ -751,10 +756,15 @@ class SettingsTab extends PluginSettingTab {
 
     containerEl.empty()
 
-    containerEl.createEl('h1', { text: 'Tutu Emoji Toolbar' })
+    new Setting(containerEl)
+      .setName('Tutu Emoji Toolbar')
+      .setHeading()
+
     containerEl.createEl('a', { text: 'Forked from oliveryh', href: 'https://github.com/tinswangtao-web/tutu-emoji-toolbar' })
 
-    containerEl.createEl('h2', { text: '设置' })
+    new Setting(containerEl)
+      .setName('设置')
+      .setHeading()
 
     new Setting(containerEl)
       .setName('Twitter Emoji (v16)')
@@ -781,7 +791,7 @@ class SettingsTab extends PluginSettingTab {
 
         const inputEl = text.inputEl
         inputEl.readOnly = true
-        inputEl.style.cursor = 'pointer'
+        inputEl.addClass('emoji-toolbar-hotkey-input')
 
         inputEl.addEventListener('keydown', (evt: KeyboardEvent) => {
           evt.preventDefault()
@@ -789,7 +799,7 @@ class SettingsTab extends PluginSettingTab {
           if (evt.key === 'Backspace') {
             inputEl.value = ''
             this.plugin.settings.hotkey = ''
-            this.plugin.saveSettings()
+            void this.plugin.saveSettings()
             this.plugin.registerCustomHotkey()
             new Notice('快捷键已清除')
             return
@@ -817,7 +827,7 @@ class SettingsTab extends PluginSettingTab {
             const hotkeyStr = parts.join('+')
             inputEl.value = hotkeyStr
             this.plugin.settings.hotkey = hotkeyStr
-            this.plugin.saveSettings()
+            void this.plugin.saveSettings()
             this.plugin.registerCustomHotkey()
             new Notice(`快捷键已设置为: ${hotkeyStr}`)
           }

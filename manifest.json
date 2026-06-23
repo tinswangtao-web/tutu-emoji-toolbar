@@ -1,9 +1,10 @@
 {
   "id": "tutu-emoji-toolbar",
   "name": "Tutu Emoji Toolbar",
-  "version": "1.0.1",
-  "description": "全局 Emoji 插入工具，支持标题、文件重命名、右键菜单、移动端等场景",
+  "version": "1.0.2",
+  "minAppVersion": "1.10.0",
+  "description": "全局 Emoji 插入工具，支持标题、文件重命名、右键菜单、移动端等场景。",
   "author": "Tutu",
-  "authorUrl": "https://github.com/tinswangtao-web/tutu-emoji-toolbar",
+  "authorUrl": "https://github.com/tinswangtao-web",
   "isDesktopOnly": false
 }

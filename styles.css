@@ -9,7 +9,7 @@ img.emoji {
 #emoji-modal {
   padding: 0px;
   min-width: unset;
-  width: unset !important;
+  width: unset;
 }
 
 #emoji-modal .modal-header {
@@ -22,8 +22,12 @@ img.emoji {
 
 #emoji-modal .button {
   background-color: unset;
-  border: none !important;
-  box-shadow: none !important;
+  border: none;
+  box-shadow: none;
+}
+
+.emoji-toolbar-hotkey-input {
+  cursor: pointer;
 }
 
 #emoji-modal .modal-close-button {

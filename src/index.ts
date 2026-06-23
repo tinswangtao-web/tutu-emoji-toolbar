@@ -3,7 +3,6 @@ import type {
   App,
   Editor,
   MarkdownPostProcessor,
-  TFile,
   Workspace,
 } from 'obsidian'
 import {
@@ -16,6 +15,7 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  TFile,
 } from 'obsidian'
 import React from 'react'
 import ReactDOM from 'react-dom'
@@ -25,6 +25,10 @@ import EmojiToolbar from './ui/EmojiToolbar'
 // emoji-mart 中文国际化（基于 @emoji-mart/data/i18n/zh.json）
 import zhI18n from '@emoji-mart/data/i18n/zh.json'
 const EMOJI_I18N = zhI18n
+
+interface EmojiSelection {
+  native: string
+}
 
 // ---- 保存的选区状态 ----
 
@@ -61,9 +65,67 @@ function getActiveEditor(workspace: Workspace): Editor | undefined {
   }
   const itemView = workspace.getActiveViewOfType(ItemView)
   if (itemView?.getViewType() === 'canvas') {
-    return (itemView as any).canvas?.editor
+    return (itemView as ItemView & { canvas?: { editor?: Editor } }).canvas?.editor
   }
   return undefined
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function getRangeOffsetWithinElement(contentEl: HTMLElement, range?: Range): number | undefined {
+  if (!range) return undefined
+
+  try {
+    const preRange = range.cloneRange()
+    preRange.selectNodeContents(contentEl)
+    preRange.setEnd(range.startContainer, range.startOffset)
+    return preRange.toString().length
+  } catch {
+    return undefined
+  }
+}
+
+function buildFilePathWithBasename(file: TFile, basename: string): string {
+  const folderPath = file.parent?.path
+  const fileName = `${basename}.${file.extension}`
+  return folderPath && folderPath !== '/' ? `${folderPath}/${fileName}` : fileName
+}
+
+function updateInlineTitleDisplay(app: App, file: TFile, basename: string, preferredEl?: HTMLElement) {
+  if (preferredEl?.isConnected) {
+    preferredEl.textContent = basename
+  }
+
+  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+    const view = leaf.view
+    if (!(view instanceof MarkdownView) || view.file !== file) continue
+
+    view.containerEl.querySelectorAll<HTMLElement>('.inline-title').forEach(titleEl => {
+      titleEl.textContent = basename
+    })
+  }
+}
+
+function renameFileBasename(
+  app: App,
+  file: TFile,
+  basename: string,
+  onSuccess?: (basename: string) => void,
+) {
+  const trimmedBasename = basename.trim()
+  if (!trimmedBasename || trimmedBasename === file.basename) return
+
+  app.fileManager
+    .renameFile(file, buildFilePathWithBasename(file, trimmedBasename))
+    .then(() => {
+      updateInlineTitleDisplay(app, file, trimmedBasename)
+      onSuccess?.(trimmedBasename)
+    })
+    .catch(error => {
+      new Notice(`文件重命名失败: ${getErrorMessage(error)}`)
+    })
 }
 
 function detectInsertTarget(app: App, trackedInput: TrackedInput | null): SavedSelection {
@@ -193,29 +255,36 @@ function insertFromSaved(app: App, saved: SavedSelection, text: string) {
     case 'inline-title': {
       // 使用 renameFile API 重命名文件，确保文件名和标题同步更新
       if (saved.file) {
-        const newName = text + saved.file.basename + '.' + saved.file.extension
-        app.fileManager.renameFile(saved.file, newName)
+        const file = saved.file
+        const titleText = saved.contentEl?.textContent ?? saved.file.basename
+        const offset = getRangeOffsetWithinElement(saved.contentEl, saved.range) ?? 0
+        const newBasename = `${titleText.substring(0, offset)}${text}${titleText.substring(offset)}`
+        renameFileBasename(app, file, newBasename, basename => {
+          if (saved.contentEl) updateInlineTitleDisplay(app, file, basename, saved.contentEl)
+        })
       }
       break
     }
     case 'rename-input': {
       if (saved.file) {
         // 文件重命名输入框 — 使用 renameFile API
-        const basename = saved.file.basename
+        const basename = saved.inputEl?.value ?? saved.file.basename
         const pos = saved.selStart ?? basename.length
-        const newName = basename.substring(0, pos) + text + basename.substring(saved.selEnd ?? basename.length)
-        app.fileManager.renameFile(saved.file, newName + '.' + saved.file.extension)
+        const end = saved.selEnd ?? basename.length
+        const newName = basename.substring(0, pos) + text + basename.substring(end)
+        renameFileBasename(app, saved.file, newName)
       } else if (saved.inputEl) {
         // 普通输入框（非文件重命名），直接修改 DOM
+        const start = saved.selStart ?? saved.inputEl.selectionStart ?? saved.inputEl.value.length
+        const end = saved.selEnd ?? saved.inputEl.selectionEnd ?? start
         try {
           saved.inputEl.focus()
-          saved.inputEl.setRangeText(text, saved.selStart!, saved.selEnd!, 'end')
+          saved.inputEl.setRangeText(text, start, end, 'end')
           saved.inputEl.dispatchEvent(new Event('input', { bubbles: true }))
           saved.inputEl.dispatchEvent(new Event('change', { bubbles: true }))
         } catch {
           const value = saved.inputEl.value
-          saved.inputEl.value =
-            value.substring(0, saved.selStart!) + text + value.substring(saved.selEnd!)
+          saved.inputEl.value = value.substring(0, start) + text + value.substring(end)
           saved.inputEl.dispatchEvent(new Event('input', { bubbles: true }))
         }
       }
@@ -283,7 +352,7 @@ class EmojiModal extends Modal {
   ) {
     super(app)
     this.reactComponent = React.createElement(EmojiToolbar, {
-      onSelect: (emoji: any) => {
+      onSelect: (emoji: EmojiSelection) => {
         onInsert(emoji.native)
         this.close()
       },
@@ -299,9 +368,9 @@ class EmojiModal extends Modal {
     const { contentEl } = this
     try {
       ReactDOM.render(this.reactComponent, contentEl)
-    } catch (e) {
-      contentEl.createEl('p', { text: `Emoji 选择器加载失败: ${e.message}` })
-      console.error('Tutu Emoji Toolbar: render error', e)
+    } catch (error) {
+      contentEl.createEl('p', { text: `Emoji 选择器加载失败: ${getErrorMessage(error)}` })
+      console.error('Tutu Emoji Toolbar: render error', error)
     }
   }
 
@@ -483,8 +552,8 @@ export default class EmojiPickerPlugin extends Plugin {
       const onInsert = (emoji: string) => insertFromSaved(this.app, saved, emoji)
       const myModal = new EmojiModal(this.app, theme, isNative, onInsert)
       myModal.open()
-    } catch (e) {
-      new Notice(`打开 Emoji 选择器出错: ${e.message}`)
+    } catch (error) {
+      new Notice(`打开 Emoji 选择器出错: ${getErrorMessage(error)}`)
     }
   }
 

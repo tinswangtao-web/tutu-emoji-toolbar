@@ -10,24 +10,24 @@ img.emoji {
   padding: 0px;
   min-width: unset;
   width: unset !important;
+}
 
-  .modal-header {
-    display: none;
-  }
+#emoji-modal .modal-header {
+  display: none;
+}
 
-  .modal-content {
-    margin-top: 0px;
-  }
+#emoji-modal .modal-content {
+  margin-top: 0px;
+}
 
-  .button {
-    background-color: unset;
-    border: none !important;
-    box-shadow: none !important;
-  }
+#emoji-modal .button {
+  background-color: unset;
+  border: none !important;
+  box-shadow: none !important;
+}
 
-  .modal-close-button {
-    visibility: hidden;
-  }
+#emoji-modal .modal-close-button {
+  visibility: hidden;
 }
 
 /* 移动端浮动按钮 */
@@ -50,13 +50,13 @@ img.emoji {
   color: white;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
+}
 
-  &:active {
-    transform: scale(0.92);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  }
+.emoji-toolbar-mobile-btn:active {
+  transform: scale(0.92);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
 
-  body.is-mobile.theme-dark & {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  }
+body.is-mobile.theme-dark .emoji-toolbar-mobile-btn {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }

@@ -4,10 +4,10 @@ import nativeData from '@emoji-mart/data'
 import Picker from '@emoji-mart/react'
 
 interface EmojiToolbarProps {
-  onSelect: (emoji: any) => void
+  onSelect: (emoji: { native: string }) => void
   theme: string
   isNative: boolean
-  i18n: any
+  i18n: unknown
 }
 
 class EmojiToolbar extends React.Component<EmojiToolbarProps> {

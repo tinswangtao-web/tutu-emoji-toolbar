@@ -87,6 +87,30 @@ function getRangeOffsetWithinElement(contentEl: HTMLElement, range?: Range): num
   }
 }
 
+function getElementFromNode(node: Node | null): HTMLElement | null {
+  if (!node) return null
+  return node instanceof HTMLElement ? node : node.parentElement
+}
+
+function getInlineTitleSelection(): { titleEl: HTMLElement; range: Range } | null {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return null
+
+  const range = selection.getRangeAt(0).cloneRange()
+  const startEl = getElementFromNode(range.startContainer)
+  const titleEl = startEl?.closest<HTMLElement>('.inline-title')
+
+  if (!titleEl?.isContentEditable) return null
+  return { titleEl, range }
+}
+
+function getActiveFileForTitleText(app: App, titleText: string | null | undefined): TFile | undefined {
+  const activeFile = app.workspace.getActiveFile()
+  if (!activeFile) return undefined
+
+  return titleText?.trim() === activeFile.basename ? activeFile : undefined
+}
+
 function buildFilePathWithBasename(file: TFile, basename: string): string {
   const folderPath = file.parent?.path
   const fileName = `${basename}.${file.extension}`
@@ -108,6 +132,63 @@ function updateInlineTitleDisplay(app: App, file: TFile, basename: string, prefe
   }
 }
 
+function getActiveMarkdownEditorForFile(app: App, file: TFile): Editor | undefined {
+  const markdownView = app.workspace.getActiveViewOfType(MarkdownView)
+  if (markdownView?.file === file) {
+    return markdownView.editor
+  }
+
+  return undefined
+}
+
+function getHeadingRenameTarget(
+  app: App,
+  editor: Editor,
+  cursorPos: { line: number; ch: number },
+  text: string,
+): { file: TFile; newBasename: string } | undefined {
+  const file = app.workspace.getActiveFile()
+  if (!file) return undefined
+
+  const lineText = editor.getLine(cursorPos.line)
+  const headingMatch = /^(#\s+)(.*)$/.exec(lineText)
+  if (!headingMatch) return undefined
+
+  const headingPrefix = headingMatch[1]
+  const headingText = headingMatch[2]
+  if (headingText.trim() !== file.basename) return undefined
+
+  const headingCursorCh = cursorPos.ch - headingPrefix.length
+  if (headingCursorCh < 0) return undefined
+
+  return {
+    file,
+    newBasename: `${headingText.substring(0, headingCursorCh)}${text}${headingText.substring(headingCursorCh)}`,
+  }
+}
+
+function syncFirstHeadingWithBasename(app: App, file: TFile, oldBasename: string, newBasename: string) {
+  const editor = getActiveMarkdownEditorForFile(app, file)
+  if (!editor) return
+
+  const maxLines = Math.min(editor.lineCount(), 80)
+  for (let line = 0; line < maxLines; line += 1) {
+    const lineText = editor.getLine(line)
+    const headingMatch = /^(#\s+)(.*)$/.exec(lineText)
+    if (!headingMatch) continue
+
+    const headingText = headingMatch[2]
+    if (headingText.trim() === oldBasename) {
+      editor.replaceRange(
+        `${headingMatch[1]}${newBasename}`,
+        { line, ch: 0 },
+        { line, ch: lineText.length },
+      )
+    }
+    return
+  }
+}
+
 function renameFileBasename(
   app: App,
   file: TFile,
@@ -116,10 +197,12 @@ function renameFileBasename(
 ) {
   const trimmedBasename = basename.trim()
   if (!trimmedBasename || trimmedBasename === file.basename) return
+  const oldBasename = file.basename
 
   app.fileManager
     .renameFile(file, buildFilePathWithBasename(file, trimmedBasename))
     .then(() => {
+      syncFirstHeadingWithBasename(app, file, oldBasename, trimmedBasename)
       updateInlineTitleDisplay(app, file, trimmedBasename)
       onSuccess?.(trimmedBasename)
     })
@@ -130,18 +213,32 @@ function renameFileBasename(
 
 function detectInsertTarget(app: App, trackedInput: TrackedInput | null): SavedSelection {
   const activeEl = document.activeElement as HTMLElement
+  const inlineTitleSelection = getInlineTitleSelection()
+
+  if (inlineTitleSelection) {
+    const file = app.workspace.getActiveFile()
+    if (file) {
+      return {
+        type: 'inline-title',
+        file,
+        contentEl: inlineTitleSelection.titleEl,
+        range: inlineTitleSelection.range,
+      }
+    }
+  }
 
   // 1. 优先检查当前活跃元素
   if (activeEl) {
     // 内联标题（contenteditable div.inline-title）
-    if (activeEl.classList.contains('inline-title') && activeEl.isContentEditable) {
+    const inlineTitleEl = activeEl.closest<HTMLElement>('.inline-title')
+    if (inlineTitleEl?.isContentEditable) {
       const file = app.workspace.getActiveFile()
       if (file) {
         const selection = window.getSelection()
         return {
           type: 'inline-title',
           file,
-          contentEl: activeEl,
+          contentEl: inlineTitleEl,
           range: selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : undefined,
         }
       }
@@ -151,19 +248,23 @@ function detectInsertTarget(app: App, trackedInput: TrackedInput | null): SavedS
     if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
       if (!activeEl.closest('#emoji-modal')) {
         const fileEl = activeEl.closest('[data-path]')
+        let titleFile = getActiveFileForTitleText(app, activeEl.value)
         if (fileEl) {
           const filePath = fileEl.getAttribute('data-path')
           if (filePath) {
             const file = app.vault.getAbstractFileByPath(filePath)
             if (file instanceof TFile) {
-              return {
-                type: 'rename-input',
-                file,
-                inputEl: activeEl,
-                selStart: activeEl.selectionStart ?? 0,
-                selEnd: activeEl.selectionEnd ?? 0,
-              }
+              titleFile = file
             }
+          }
+        }
+        if (titleFile) {
+          return {
+            type: 'rename-input',
+            file: titleFile,
+            inputEl: activeEl,
+            selStart: activeEl.selectionStart ?? 0,
+            selEnd: activeEl.selectionEnd ?? 0,
           }
         }
         // 普通输入框（非文件重命名）
@@ -181,10 +282,20 @@ function detectInsertTarget(app: App, trackedInput: TrackedInput | null): SavedS
       activeEl.isContentEditable &&
       !activeEl.closest('#emoji-modal') &&
       !activeEl.closest('.cm-content') &&
-      !activeEl.classList.contains('inline-title')
+      !activeEl.closest('.inline-title')
     ) {
       const selection = window.getSelection()
       if (selection && selection.rangeCount > 0) {
+        const titleFile = getActiveFileForTitleText(app, activeEl.textContent)
+        if (titleFile) {
+          return {
+            type: 'inline-title',
+            file: titleFile,
+            contentEl: activeEl,
+            range: selection.getRangeAt(0).cloneRange(),
+          }
+        }
+
         return {
           type: 'contenteditable',
           contentEl: activeEl,
@@ -244,11 +355,15 @@ function insertFromSaved(app: App, saved: SavedSelection, text: string) {
   switch (saved.type) {
     case 'editor': {
       if (saved.editor && saved.cursorPos) {
+        const headingRenameTarget = getHeadingRenameTarget(app, saved.editor, saved.cursorPos, text)
         saved.editor.replaceRange(text, saved.cursorPos, saved.cursorPos)
         saved.editor.setCursor({
           line: saved.cursorPos.line,
           ch: saved.cursorPos.ch + text.length,
         })
+        if (headingRenameTarget) {
+          renameFileBasename(app, headingRenameTarget.file, headingRenameTarget.newBasename)
+        }
       }
       break
     }
@@ -425,14 +540,15 @@ export default class EmojiPickerPlugin extends Plugin {
       if (!target) return
 
       // 内联标题
-      if (target.classList.contains('inline-title') && target.isContentEditable) {
+      const inlineTitleSelection = getInlineTitleSelection()
+      const inlineTitleEl = inlineTitleSelection?.titleEl ?? target.closest<HTMLElement>('.inline-title')
+      if (inlineTitleEl?.isContentEditable) {
         const file = this.app.workspace.getActiveFile()
-        const selection = window.getSelection()
         this.trackedInput = {
-          element: target,
+          element: inlineTitleEl,
           type: 'inline-title',
           file: file ?? undefined,
-          range: selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : undefined,
+          range: inlineTitleSelection?.range,
           timestamp: Date.now(),
         }
         return
@@ -442,7 +558,7 @@ export default class EmojiPickerPlugin extends Plugin {
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         if (!target.closest('#emoji-modal') && !target.closest('.modal-setting-backdrop')) {
           const fileEl = target.closest('[data-path]')
-          let file: TFile | undefined
+          let file = getActiveFileForTitleText(this.app, target.value)
           if (fileEl) {
             const filePath = fileEl.getAttribute('data-path')
             if (filePath) {
@@ -467,12 +583,14 @@ export default class EmojiPickerPlugin extends Plugin {
         target.isContentEditable &&
         !target.closest('#emoji-modal') &&
         !target.closest('.cm-content') &&
-        !target.classList.contains('inline-title')
+        !target.closest('.inline-title')
       ) {
         const selection = window.getSelection()
+        const titleFile = getActiveFileForTitleText(this.app, target.textContent)
         this.trackedInput = {
           element: target,
-          type: 'contenteditable',
+          type: titleFile ? 'inline-title' : 'contenteditable',
+          file: titleFile,
           range: selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : undefined,
           timestamp: Date.now(),
         }

@@ -756,10 +756,6 @@ class SettingsTab extends PluginSettingTab {
 
     containerEl.empty()
 
-    new Setting(containerEl)
-      .setName('Tutu Emoji Toolbar')
-      .setHeading()
-
     containerEl.createEl('a', { text: 'Forked from oliveryh', href: 'https://github.com/tinswangtao-web/tutu-emoji-toolbar' })
 
     new Setting(containerEl)
@@ -781,6 +777,8 @@ class SettingsTab extends PluginSettingTab {
         }),
       )
 
+    let hotkeyInputEl: HTMLInputElement | null = null;
+
     new Setting(containerEl)
       .setName('快捷键')
       .setDesc('点击输入框后按下你想设置的快捷键组合，按 Backspace 清除。你也可以在 Obsidian 的「设置 → 快捷键」中配置。')
@@ -790,6 +788,7 @@ class SettingsTab extends PluginSettingTab {
           .setValue(this.plugin.settings.hotkey)
 
         const inputEl = text.inputEl
+        hotkeyInputEl = inputEl;
         inputEl.readOnly = true
         inputEl.addClass('emoji-toolbar-hotkey-input')
 
@@ -845,7 +844,9 @@ class SettingsTab extends PluginSettingTab {
             this.plugin.settings.hotkey = ''
             await this.plugin.saveSettings()
             this.plugin.registerCustomHotkey()
-            this.display()
+            if (hotkeyInputEl) {
+              hotkeyInputEl.value = ''
+            }
             new Notice('快捷键已清除')
           })
       })
